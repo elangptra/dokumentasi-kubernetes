@@ -17,7 +17,7 @@ Metode yang digunakan adalah **"Nodes-in-Containers"** menggunakan `k3d`. Ini me
 
 <br>
 
-> [!important] : Spesifikasi CPU 4 Core sangat krusial karena akan menjalankan 3 Node (Virtual) dalam satu mesin.
+>[!important] : Spesifikasi CPU 4 Core sangat krusial karena akan menjalankan 3 Node (Virtual) dalam satu mesin.
 
 
 
@@ -125,7 +125,7 @@ k3d cluster create my-cluster \
     --port "30000-30005:30000-30005@server:0" \
     --timeout 120s
 ```
-   > [!NOTE]  Penjelasan Parameter (Kenapa settingannya begini?):
+> [!NOTE]  Penjelasan Parameter (Kenapa settingannya begini?):
     > - ```--agents 2```: Menyiapkan 2 node worker tambahan (Total 3 node dalam cluster).
     > - ```--port "8080:80..."```: Mengakses web server cluster (port 80) lewat port 8080 di browser laptop kita.
     > - ```--port "30000-30005..."```: Hanya membuka 6 port eksternal. Jangan membuka range 30000-32767 secara penuh karena akan membuat ribuan proses proxy yang memakan habis RAM/CPU server fisik.
