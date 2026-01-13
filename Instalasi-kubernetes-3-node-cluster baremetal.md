@@ -40,8 +40,8 @@ Debian Trixie adalah versi *testing/next-stable*. Karena sangat baru, repository
     sudo chmod a+r /etc/apt/keyrings/docker.gpg
     ```
     > [!WARNING] JIKA MUNCUL ERROR syntax error near unexpected token 
-    > berarti anda kemungkinan menggunakan CLI Linux
-    > ubah curl -fsSL menjadi seperti ini  curl -fsSL "https://download.docker.com/linux/debian/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    > - berarti anda kemungkinan menggunakan CLI Linux
+    > - ubah curl -fsSL menjadi seperti ini  curl -fsSL "https://download.docker.com/linux/debian/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
 4.  **Tambahkan Repository (Compatibility Mode):**
     Kita menggunakan repo `bookworm` (Debian 12) jika repo `trixie` belum tersedia, agar instalasi stabil.
