@@ -75,8 +75,13 @@ kubectl port-forward svc/monitoring-stack-grafana -n monitoring 3000:80
 
 > AKSES URL: http://localhost:3000
 
-> Username Default: admin </br>
-Password Default: prom-operator
+> JALANKAN PERINTAH BERIKUT UNTUK MENDAPATKAN PASSWORD
+```
+kubectl --namespace monitoring get secrets monitoring-stack-grafana -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+```
+
+> Username: admin </br>
+Password: (masukkan token yang didapat dari perintah diatas) 
 
 ### 3.3 Navigasi Dashboard
 - Klik menu Dashboards (icon kotak empat) → Browse.
