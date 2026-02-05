@@ -304,7 +304,7 @@ ingress-nginx-controller-xxxxxxxxxx-xxxxx   1/1     Running   0          2m
 
 **Catatan:** Pods `admission-create` dan `admission-patch` berstatus `Completed` adalah **NORMAL** (bukan error). Yang penting `ingress-nginx-controller` harus `Running`.
 
-#### Langkah 3.3: Cek Service Ingress (The Magic Moment!)
+#### Langkah 3.3: Cek Service Ingress
 
 Sekarang cek apakah MetalLB sudah memberikan IP address ke Ingress Controller:
 
@@ -639,9 +639,440 @@ http://app2.local
 
 ---
 
+## 🔒 LANGKAH 6: Setup High Availability (HA) untuk Ingress Controller
+
+**Kenapa perlu HA?**
+
+Bayangkan Ingress Controller kita hanya ada 1 pod di 1 worker node. Kalau:
+- Worker node tersebut mati → Semua aplikasi tidak bisa diakses!
+- Pod Ingress crash → Downtime sampai pod baru jalan
+
+**Solusi:** Buat **2 replica** (atau lebih, sesuaikan dengan jumlah worker yaa) Ingress Controller yang jalan di **worker node berbeda**.
+
+### Langkah 6.1: Ubah Deployment Ingress Controller
+
+Edit deployment Ingress Controller:
+
+```bash
+kubectl edit deployment ingress-nginx-controller -n ingress-nginx
+```
+
+**Akan muncul editor vim dengan konfigurasi yang sangat panjang. Ikuti langkah ini dengan teliti!**
+
+### Langkah 6.2: Ubah Replicas Menjadi 2
+
+**Cari bagian replicas**:
+
+```yaml
+spec:
+  replicas: 1
+```
+
+**Ubah menjadi:**
+
+```yaml
+spec:
+  replicas: 2
+```
+
+**Cara:**
+1. Tekan `/` (slash)
+2. Ketik `replicas:`
+3. Tekan Enter (kursor akan loncat ke baris tersebut)
+4. Tekan `i` untuk masuk mode insert
+5. Ubah angka `1` menjadi `2`
+
+### Langkah 6.3: Tambahkan Anti-Affinity
+
+**Scroll ke bawah** sampai menemukan bagian `spec.template.spec`. Strukturnya akan seperti ini:
+
+```yaml
+spec:
+  replicas: 2
+  ...
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/component: controller
+    spec:
+      containers:
+      - name: controller
+        ...
+```
+
+**Tambahkan konfigurasi `affinity`** tepat di bawah `spec.template.spec` (sejajar dengan `containers`):
+
+**Cara:**
+1. Cari baris yang ada tulisan `spec:` di bawah `template:`
+2. Di bawah baris `spec:` tersebut, SEBELUM baris `containers:`, tambahkan konfigurasi ini:
+
+```yaml
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: ingress-nginx
+                app.kubernetes.io/component: controller
+            topologyKey: kubernetes.io/hostname
+```
+
+**⚠️ PENTING: Perhatikan indentasi (spasi)!** 
+
+**Penjelasan Anti-Affinity:**
+- **requiredDuringSchedulingIgnoredDuringExecution:** Kubernetes WAJIB taruh 2 pods di node berbeda
+- **matchLabels:** Cari pods dengan label yang sama (ingress-nginx controller)
+- **topologyKey: kubernetes.io/hostname:** Gunakan nama hostname sebagai pembeda (1 pod per node)
+
+**Artinya:** "Jangan pernah taruh 2 pods Ingress Controller di node yang sama!"
+
+### Langkah 6.4: Tambahkan Publish Service (Agar Pakai IP LoadBalancer)
+
+Masih di editor yang sama, scroll ke bagian `containers` → `args`.
+
+**Cari bagian seperti ini:**
+
+```yaml
+      containers:
+      - name: controller
+        args:
+        - /nginx-ingress-controller
+        - --election-id=ingress-nginx-leader
+        - --controller-class=k8s.io/ingress-nginx
+        - --ingress-class=nginx
+        - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+        - --validating-webhook=:8443
+        - --validating-webhook-certificate=/usr/local/certificates/cert
+        - --validating-webhook-key=/usr/local/certificates/key
+```
+
+**Tambahkan 1 baris baru** di dalam daftar `args`:
+
+```yaml
+        - --publish-service=ingress-nginx/ingress-nginx-controller
+```
+
+**Hasil akhir:**
+
+```yaml
+      containers:
+      - name: controller
+        args:
+        - /nginx-ingress-controller
+        - --election-id=ingress-nginx-leader
+        - --controller-class=k8s.io/ingress-nginx
+        - --ingress-class=nginx
+        - --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+        - --validating-webhook=:8443
+        - --validating-webhook-certificate=/usr/local/certificates/cert
+        - --validating-webhook-key=/usr/local/certificates/key
+        - --publish-service=ingress-nginx/ingress-nginx-controller   # <-- TAMBAHKAN INI
+```
+
+**Penjelasan:**
+- Flag `--publish-service` memberitahu Ingress Controller untuk menggunakan **EXTERNAL-IP dari service LoadBalancer** (bukan IP node)
+- Sekarang semua Ingress resource akan menampilkan IP MetalLB, bukan IP worker node
+
+### Langkah 6.5: Simpan Perubahan
+
+1. Tekan `Esc`
+2. Ketik `:wq`
+3. Tekan Enter
+
+**Output:**
+```
+deployment.apps/ingress-nginx-controller edited
+```
+
+### Langkah 6.6: Verifikasi Perubahan
+
+Tunggu beberapa detik, lalu cek pods:
+
+```bash
+kubectl get pods -n ingress-nginx -o wide
+```
+
+**Output yang diharapkan:**
+
+```
+NAME                                        READY   STATUS    RESTARTS   AGE   NODE
+ingress-nginx-controller-xxxxxxxxxx-xxxxx   1/1     Running   0          1m    k8s-worker1
+ingress-nginx-controller-yyyyyyyyyy-yyyyy   1/1     Running   0          1m    k8s-worker2
+```
+
+**Lihat kolom `NODE`:**
+✅ Harus ada 2 pods di **2 worker node berbeda** (worker1 dan worker2)!
+
+**Cek Ingress resource, sekarang menggunakan IP LoadBalancer, bukan IP Node Worker lagi:**
+
+```bash
+kubectl get ingress -A
+```
+
+**Output yang diharapkan:**
+
+```
+NAMESPACE   NAME           CLASS   HOSTS        ADDRESS         PORTS     AGE
+demo-app    demo-ingress   nginx   demo.local   192.168.2.240   80, 443   10m
+```
+
+**Lihat kolom `ADDRESS`:**
+✅ Sekarang harus menampilkan **IP MetalLB LoadBalancer** (bukan IP worker node)!
+
+🎉 **BERHASIL! Ingress Controller sekarang High Availability dengan 2 replicas!**
+
+---
+
 ## 😰 Troubleshooting - Kalau Ada Masalah
 
-### Masalah 1: EXTERNAL-IP Ingress Stuck di `<pending>`
+### Masalah 1: Pod Ketiga Stuck Pending Setelah Edit Deployment Ingress
+
+**Gejala:**
+
+Setelah edit deployment (ubah replicas jadi 2), malah ada **3 pods**:
+- 2 pods `Running`
+- 1 pod `Pending` terus
+
+```bash
+kubectl get pods -n ingress-nginx
+```
+
+Output:
+```
+NAME                                        READY   STATUS    RESTARTS   AGE
+ingress-nginx-controller-old-xxxxx          1/1     Running   0          10m
+ingress-nginx-controller-new-yyyyy          1/1     Running   0          2m
+ingress-nginx-controller-new-zzzzz          0/1     Pending   0          2m
+```
+
+**Penyebab:**
+
+Ada **ReplicaSet lama yang masih aktif** dan bentrok dengan ReplicaSet baru!
+
+**Solusi:**
+
+#### Step 1: Cek Semua ReplicaSet
+
+```bash
+kubectl get replicaset -n ingress-nginx
+```
+
+**Output contoh:**
+
+```
+NAME                                  DESIRED   CURRENT   READY   AGE
+ingress-nginx-controller-66d4c9f       1         1         1       20m
+ingress-nginx-controller-7b8f5d6       2         2         1       5m
+```
+
+**Lihat ada 2 ReplicaSet:**
+- ReplicaSet **lama** (66d4c9f) → DESIRED = 1
+- ReplicaSet **baru** (7b8f5d6) → DESIRED = 2
+
+**Total:** 1 + 2 = 3 pods! Makanya ada 3 pods yang muncul.
+
+#### Step 2: Hapus ReplicaSet Lama
+
+Copy nama ReplicaSet **yang DESIRED-nya lebih kecil** (yang lama), lalu hapus:
+
+```bash
+kubectl delete replicaset ingress-nginx-controller-66d4c9f -n ingress-nginx
+```
+
+**⚠️ GANTI `66d4c9f`** dengan nama ReplicaSet lama Anda!
+
+**Output:**
+```
+replicaset.apps "ingress-nginx-controller-66d4c9f" deleted
+```
+
+#### Step 3: Verifikasi
+
+Cek lagi pods:
+
+```bash
+kubectl get pods -n ingress-nginx -o wide
+```
+
+**Sekarang harusnya hanya ada 2 pods `Running`:**
+
+```
+NAME                                        READY   STATUS    RESTARTS   AGE   NODE
+ingress-nginx-controller-7b8f5d6-xxxxx      1/1     Running   0          2m    k8s-worker1
+ingress-nginx-controller-7b8f5d6-yyyyy      1/1     Running   0          2m    k8s-worker2
+```
+
+✅ **Masalah solved!**
+
+---
+
+### Masalah 2: Kedua Pods Jalan di Node yang Sama
+
+**Gejala:**
+
+Setelah setup anti-affinity, tapi 2 pods masih di node yang sama:
+
+```bash
+kubectl get pods -n ingress-nginx -o wide
+```
+
+Output:
+```
+NAME                                        NODE
+ingress-nginx-controller-xxxxx              k8s-worker1
+ingress-nginx-controller-yyyyy              k8s-worker1   <-- Masalah!
+```
+
+**Penyebab:**
+
+Anti-affinity tidak ditambahkan dengan benar atau label tidak cocok.
+
+**Solusi:**
+
+#### Step 1: Cek Label Pods
+
+```bash
+kubectl get pods -n ingress-nginx --show-labels
+```
+
+**Catat label yang ada**, misalnya:
+```
+app.kubernetes.io/name=ingress-nginx
+app.kubernetes.io/component=controller
+```
+
+#### Step 2: Edit Deployment Lagi
+
+```bash
+kubectl edit deployment ingress-nginx-controller -n ingress-nginx
+```
+
+#### Step 3: Cek Anti-Affinity matchLabels
+
+Pastikan `matchLabels` di bagian `affinity` **cocok persis** dengan label pods:
+
+```yaml
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx        # <-- Harus sama!
+          app.kubernetes.io/component: controller      # <-- Harus sama!
+      topologyKey: kubernetes.io/hostname
+```
+
+#### Step 4: Restart Deployment
+
+Simpan perubahan, lalu restart deployment:
+
+```bash
+kubectl rollout restart deployment ingress-nginx-controller -n ingress-nginx
+```
+
+#### Step 5: Verifikasi
+
+```bash
+kubectl get pods -n ingress-nginx -o wide
+```
+
+Sekarang harus di 2 node berbeda!
+
+---
+
+### Masalah 3: Tidak Cukup Worker Node
+
+**Gejala:**
+
+Hanya punya **1 worker node**, tapi set replicas = 2. Hasilnya:
+- 1 pod `Running`
+- 1 pod `Pending` dengan alasan: "0/3 nodes are available: 1 node(s) didn't match pod anti-affinity rules"
+
+**Solusi:**
+
+**Opsi A: Hapus Anti-Affinity (Tidak Recommended)**
+
+Kalau cuma ada 1 worker node, Anda bisa hapus bagian `affinity` dari deployment.
+
+**Opsi B: Tambah Worker Node (Recommended)**
+
+Tambah 1 worker node lagi ke cluster, lalu join ke master.
+
+**Opsi C: Ubah Anti-Affinity Jadi "Preferred" (Compromise)**
+
+Edit deployment:
+
+```bash
+kubectl edit deployment ingress-nginx-controller -n ingress-nginx
+```
+
+Ubah dari `requiredDuringSchedulingIgnoredDuringExecution` menjadi `preferredDuringSchedulingIgnoredDuringExecution`:
+
+```yaml
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:  # <-- UBAH INI
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: ingress-nginx
+            app.kubernetes.io/component: controller
+        topologyKey: kubernetes.io/hostname
+```
+
+**Artinya:** "Kalau bisa, taruh di node berbeda. Kalau tidak bisa, ya sudah taruh di node yang sama."
+
+---
+
+### Masalah 4: Ingress ADDRESS Masih Menampilkan IP Node
+
+**Gejala:**
+
+Setelah tambah `--publish-service`, tapi `kubectl get ingress -A` masih menampilkan IP worker node, bukan IP LoadBalancer.
+
+**Solusi:**
+
+#### Step 1: Cek Apakah Flag Sudah Ada
+
+```bash
+kubectl get deployment ingress-nginx-controller -n ingress-nginx -o yaml | grep publish-service
+```
+
+**Harusnya muncul:**
+```
+- --publish-service=ingress-nginx/ingress-nginx-controller
+```
+
+Kalau tidak muncul, berarti flag belum ditambahkan. Ulangi Langkah 6.4.
+
+#### Step 2: Restart Deployment
+
+```bash
+kubectl rollout restart deployment ingress-nginx-controller -n ingress-nginx
+```
+
+#### Step 3: Hapus dan Buat Ulang Ingress Resource
+
+Kadang Ingress resource perlu dibuat ulang:
+
+```bash
+kubectl delete ingress demo-ingress -n demo-app
+kubectl apply -f ingress-demo.yaml
+```
+
+#### Step 4: Verifikasi
+
+```bash
+kubectl get ingress -n demo-app
+```
+
+Sekarang kolom `ADDRESS` harus menampilkan IP LoadBalancer!
+
+---
+
+### Masalah 5: EXTERNAL-IP Ingress Stuck di `<pending>`
 
 **Gejala:** `kubectl get svc -n ingress-nginx` menunjukkan `<pending>` terus
 
@@ -675,7 +1106,7 @@ kubectl rollout restart daemonset speaker -n metallb-system
 
 ---
 
-### Masalah 2: Tidak Bisa Akses `http://demo.local`
+### Masalah 6: Tidak Bisa Akses `http://demo.local`
 
 **Gejala:** Browser menampilkan "This site can't be reached"
 
@@ -707,7 +1138,7 @@ Pastikan port 80 dan 443 terbuka.
 
 ---
 
-### Masalah 3: Aplikasi Menampilkan "404 Not Found"
+### Masalah 7: Aplikasi Menampilkan "404 Not Found"
 
 **Gejala:** Bisa akses domain, tapi muncul halaman 404 dari NGINX
 
@@ -740,7 +1171,7 @@ kubectl logs -n ingress-nginx deployment/ingress-nginx-controller
 
 ---
 
-### Masalah 4: HTTPS Tidak Bekerja
+### Masalah 8: HTTPS Tidak Bekerja
 
 **Gejala:** HTTP bisa, tapi HTTPS error
 
@@ -762,7 +1193,7 @@ Kalau bisa, berarti masalah di DNS/domain.
 
 ---
 
-### Masalah 5: IP Address Conflict
+### Masalah 9: IP Address Conflict
 
 **Gejala:** Setelah install MetalLB, device lain di jaringan jadi error
 
