@@ -168,7 +168,7 @@ Untuk mempermudah pembacaan file manifest, kita akan mengikuti struktur director
 untuk isi setiap file ikuti code berikut :
 
 ### 3.1 swb-deployment.yaml
-```bash
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -218,7 +218,7 @@ spec:
             periodSeconds: 20
 ```
 ### 3.2 swb-service.yaml
-```bash
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -232,7 +232,7 @@ spec:
     app: swb-app #harus mengikuti nama deployment
 ```
 ### 3.3 swb-gitlab.yaml
-```bash
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -243,7 +243,7 @@ stringData:
   token: #isi dengan Personal Access Token Gitlab
 ```
 ### 3.4 swb-secret-store.yaml
-```bash
+```yaml
 apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
@@ -261,7 +261,7 @@ spec:
       projectID: "78080012" # sesuaikan project ID
 ```
 ### 3.5 swb-ssl-secret.yaml
-```bash
+```yaml
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -288,7 +288,7 @@ spec:
         key: LOCALHOST_DECRYPTED_KEY
 ```
 ### 3.6 ingress-config.yaml
-```bash
+```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -319,7 +319,7 @@ spec:
               number: 443
 ```
 ### 3.7 nginx-deployment.yaml
-```bash
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -360,7 +360,7 @@ spec:
           secretName: swb-ssl
 ```
 ### 3.8 nginx-service.yaml
-```bash
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -375,7 +375,7 @@ spec:
     app: swb-nginx
 ```
 ### 3.9 nginx-config.yaml
-```bash
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -502,7 +502,7 @@ data:
 ### 3.10 regcred-swb.yaml
 > **PERINGATAN !**
 > **regcred digunakan untuk deployment pull images dari private repo, dan configurasi dibawah ini mengarah ke dockerhub**
-```bash
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -523,7 +523,7 @@ stringData:
     }
 ```
 >**jika ingin menggunakan wahana registry bisa menggunakan yaml berikut:**
-```bash
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -541,7 +541,7 @@ stringData:
     }
 ```
 ### 3.11 swb-hpa.yaml
-```bash
+```yaml
 apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
 metadata:
