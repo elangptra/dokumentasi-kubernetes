@@ -415,7 +415,7 @@ echo -n "username:password" | base64
 
 Copy output-nya dan paste ke bagian `auth`.
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ---
 
@@ -462,7 +462,7 @@ data:
 - Buka file `tls-key-base64.txt`, copy isinya
 - Paste di tempat `<ISI_BASE64_TLS_KEY>`
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ##### Cara B: Gunakan kubectl create secret (Lebih Mudah)
 
@@ -515,7 +515,7 @@ spec:
 - **maxReplicas: 10** → Maksimal bisa scale sampai 10 pods
 - **targetCPUUtilizationPercentage: 70** → Kalau CPU usage >70%, tambah pods
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ---
 
@@ -586,7 +586,7 @@ spec:
 - **readinessProbe:** Cek apakah pod sudah siap terima traffic atau belum
 - **livenessProbe:** Cek apakah pod masih hidup (kalau mati, restart otomatis)
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ---
 
@@ -616,7 +616,7 @@ spec:
 - Service ini expose backend pods di port 3189
 - Service type `ClusterIP` (default) → hanya bisa diakses dari dalam cluster
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ---
 
@@ -680,7 +680,7 @@ data:
 - **location /a/:** Proxy API request ke backend
 - **gzip on:** Compress response untuk hemat bandwidth
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ---
 
@@ -741,7 +741,7 @@ spec:
 - **volumeMounts:** Mount konfigurasi NGINX dan SSL certificate ke dalam container
 - **volumes:** Ambil data dari ConfigMap (`nginx-config`) dan Secret (`swb-ssl`)
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ---
 
@@ -772,7 +772,7 @@ spec:
 - Service ini expose NGINX pods di port 443
 - Ingress akan connect ke service ini
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ---
 
@@ -823,7 +823,7 @@ spec:
 - **tls:** Aktifkan HTTPS dengan certificate dari secret `swb-ssl`
 - **rules:** Traffic untuk domain `swb-docker100.wahana.com` diarahkan ke service `swb-nginx-service`
 
-**Simpan:** `Ctrl+X`, `Y`, `Enter`
+**Simpan:** Tekan `Esc`, ketik `:wq`, lalu `Enter` untuk menyimpan dan keluar.
 
 ✅ **Semua file konfigurasi sudah siap!**
 
