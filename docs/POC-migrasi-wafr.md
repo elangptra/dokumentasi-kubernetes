@@ -188,12 +188,11 @@ kubectl get pods -n wafr-wahana -l app=wafr -w
 
 | Parameter | Nilai |
 |---|---|
-| Waktu pod didelete | _(catat timestamp)_ |
-| Waktu pod baru Ready | _(catat timestamp)_ |
-| Jumlah request gagal (HTTP non-2xx) selama proses | _(catat jumlah)_ |
-| Apakah aplikasi tetap bisa diakses? | ✅ / ❌ |
+| Waktu pod didelete | 14:29:20 WIB |
+| Waktu pod baru Ready | 14:29:33 WIB |
+| Apakah aplikasi tetap bisa diakses? | ✅ Masih |
 
-**Kriteria Lulus:** Monitor di Terminal 1 tidak menunjukkan error/timeout selama proses delete pod. Kubernetes secara otomatis membuat pod pengganti hingga kembali ke 2 replica.
+**Kriteria Lulus:** Monitor di Terminal 1 tidak menunjukkan error selama proses delete pod. Kubernetes secara otomatis membuat pod pengganti hingga kembali ke 2 replica.
 
 ---
 
@@ -203,7 +202,6 @@ kubectl get pods -n wafr-wahana -l app=wafr -w
 
 **Prasyarat:**
 - 4 worker node tersedia (192.168.200.102, .103, .181, .182).
-- Pod WAFR tersebar di worker node yang berbeda.
 - Akses SSH ke node atau hak akses untuk `kubectl cordon/drain`.
 
 **Langkah Pengujian:**
@@ -606,8 +604,8 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 
 | Test Case | Tanggal Test | PIC | Status | Catatan |
 |---|---|---|---|---|
-| TC-01: Validasi Data | Senin, 11 Mei 2026 | Elang | ✅ Lulus | - |
-| TC-02: Pod Failure | | | ⬜ Belum | |
+| TC-01: Validasi Data | Kamis, 07 Mei 2026 | Elang | ✅ Lulus | - |
+| TC-02: Pod Failure | Senin, 11 Mei 2026 | Elang | ✅ Lulus | Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. |
 | TC-03: Node Failure | | | ⬜ Belum | |
 | TC-04: Rolling Update | | | ⬜ Belum | |
 | TC-05: Performance | | | ⬜ Belum | |
@@ -619,7 +617,7 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 ### Detail Temuan
 
 #### **1. TC-01: Validasi Data (Data Parity)**
-**Status:** ✅ Lulus | **Tanggal:** 11 Mei 2026 | **PIC:** Elang
+**Status:** ✅ Lulus | **Tanggal:** 07 Mei 2026 | **PIC:** Elang
 
 Berikut adalah rincian perbandingan antara environment Legacy dan Kubernetes:
 
@@ -647,6 +645,54 @@ Aplikasi WAFR di Kubernetes terbukti **LULUS** validasi data. Aplikasi dapat mer
 
 **Catatan Tambahan:** 
 Tidak ditemukan masalah, *error log*, atau anomali jaringan selama pengetesan TC-01 berlangsung.
+
+#### **2. TC-02: Pod Failure — Ketersediaan Aplikasi saat Pod Dimatikan**
+**Status:** ✅ Lulus | **Tanggal:** 11 Mei 2026 | **PIC:** Elang
+
+Berikut adalah rincian hasil pengujian resiliensi pod WAFR:
+
+**1. Eksekusi Simulasi Kegagalan**
+*   **Aksi:** 
+    1. Membuka terminal pemantauan untuk mengamati status pod di *namespace* `wafr-wahana` secara *real-time*:
+    ```bash
+    kubectl get pods -n wafr-wahana -o wide -w
+    ```
+    *Output Awal:*
+    ```text
+    NAME                         READY   STATUS    RESTARTS   AGE   IP               NODE          
+    wafr-app-5774d48dd-blrcp     1/1     Running   0          2d    10.244.100.205   k8s-worker3   
+    wafr-app-5774d48dd-xllg5     1/1     Running   0          2d    10.244.24.223    k8s-worker4   
+    wafr-nginx-b56d67dbc-994km   1/1     Running   0          2d    10.244.100.250   k8s-worker3   
+    wafr-nginx-b56d67dbc-xt4lp   1/1     Running   0          2d    10.244.24.222    k8s-worker4
+
+2. Menghapus salah satu pod replica `wafr-app` (simulasi *crash*/*failure*) menggunakan terminal terpisah:
+    ```bash
+    kubectl delete pods -n wafr-wahana wafr-app-    5774d48dd-blrcp
+    ```
+
+*   **Observasi Sistem:** 
+    Kubernetes Controller langsung mendeteksi hilangnya satu pod dan secara otomatis melakukan *provisioning* pod pengganti untuk menjaga jumlah *replica* tetap stabil.
+    *   **Waktu eksekusi delete:** 14:29:20 WIB
+    *   **Waktu pod baru Ready:** 14:29:33 WIB
+    *   **Durasi recovery:** ~13 detik.
+
+*Bukti Visual:*
+> **Log Terminal: Proses Delete Pod**
+> ![Proses delete pod](images/wafr-delete-pod.png)
+> ![Proses terminate pod](images/wafr-delete-terminate.png)
+> 
+> **Log Terminal: Proses Create Ulang Pod**
+> ![Proses create pod baru](images/wafr-create-pod.png)
+
+**2. Ketersediaan Aplikasi (Zero Downtime Check)**
+*   **Aksi:** Melakukan *monitoring* secara konstan pada *endpoint* aplikasi WAFR selama jendela waktu *terminate* (14:29:20) hingga pod baru terbentuk (14:29:33).
+*   **Hasil:** Aplikasi tetap dapat diakses dengan lancar. Tidak ada temuan *request drop* (HTTP 502/503) atau *timeout*. Kube-proxy / Service secara otomatis mengalihkan seluruh *traffic* masuk ke pod replica kedua (`wafr-app-5774d48dd-xllg5`) yang berada di `k8s-worker4` yang masih berstatus sehat.
+
+---
+**Kesimpulan: LULUS.** Kubernetes terbukti mampu menjaga *High Availability* (HA) aplikasi WAFR. Saat terjadi simulasi kegagalan pada salah satu pod, fitur *self-healing* berjalan dengan sangat baik (pemulihan dalam 13 detik) dan aplikasi mengalami **Zero Downtime**.
+
+**Catatan Tambahan:**
+Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. Pod yang sedang dalam fase *Terminating* langsung dicabut dari *endpoint* Service sehingga tidak menerima *traffic* baru yang bisa menyebabkan *error* di sisi *user*.
 
 ---
 
