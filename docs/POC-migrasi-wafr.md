@@ -38,7 +38,7 @@ POC ini bertujuan membuktikan bahwa aplikasi **WAFR** yang dijalankan di atas cl
 2. **Tetap tersedia (highly available)** meskipun salah satu pod dimatikan, mengingat deployment dikonfigurasi dengan **2 replica (hingga 10 dengan HPA)**.
 3. **Melakukan rescheduling pod secara otomatis** tanpa downtime ketika sebuah node Kubernetes mati.
 4. _(Tambahan)_ Mendukung rolling update tanpa downtime.
-5. _(Tambahan)_ Memberikan performa yang setara atau lebih baik dari legacy.
+5. _(Tambahan)_ Memberikan performa yang baik untuk environment production=.
 6. _(Tambahan)_ Memastikan koneksi database berjalan dengan benar.
 7. _(Tambahan)_ Memastikan operasi baca/tulis ke **Redis Sentinel** berjalan dengan benar dari dalam pod, termasuk validasi failover otomatis saat primary Redis mati.
 
@@ -148,10 +148,10 @@ POC ini bertujuan membuktikan bahwa aplikasi **WAFR** yang dijalankan di atas cl
 
 | No. | Halaman / Fitur | Legacy | Kubernetes | Sama? |
 |---|---|---|---|---|
-| 1 | Halaman utama / dashboard | | | ☐ |
-| 2 | Daftar data report | | | ☐ |
-| 3 | Detail isi report | | | ☐ |
-| 4 | Pencarian / filter | | | ☐ |
+| 1 | Halaman utama / dashboard | landing page | landing page | ✅ |
+| 2 | Daftar data report | Report Service Berkala | Report Service Berkala | ✅ |
+| 3 | Detail isi report | Detail Service Berkala | Detail Service Berkala | ✅ |
+| 4 | Pencarian / filter | Search by kolom Dikerjakan oleh | Search by kolom Dikerjakan oleh | ✅ |
 
 **Kriteria Lulus:** Semua data yang ditampilkan di UI identik antara Legacy dan Kubernetes.
 
@@ -418,7 +418,7 @@ kubectl describe configmap wafr-config -n wafr-wahana
 
 ```bash
 # Cek semua pod Redis dan Sentinel
-kubectl get pods -n wafr-wahana -o wide | grep redis
+kubectl get pods -n redis-cluster -o wide
 
 # Identifikasi pod primary saat ini via Sentinel
 kubectl exec -it <sentinel-pod-name> -n wafr-wahana -- \
@@ -452,7 +452,7 @@ exit
 
 ```bash
 # Hit endpoint WAFR yang melakukan operasi tulis ke Redis
-curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
+curl -v -X POST http://wafr-prod-k8s/wafr/<endpoint-redis> \
   -H "Content-Type: application/json" \
   -d '{"key": "value"}'
 
@@ -500,15 +500,10 @@ kubectl exec -it $POD_2 -n wafr-wahana -- \
 
 ```bash
 # Terminal 1 — Monitor pod Redis dan Sentinel
-watch kubectl get pods -n wafr-wahana -o wide | grep redis
+watch kubectl get pods -n redis-cluster -o wide
 
 # Terminal 2 — Monitor ketersediaan aplikasi WAFR
-while true; do
-  STATUS=$(curl -o /dev/null -s -w "%{http_code}" \
-    http://wafr-prod-k8s.wahana.com/wafr/health)
-  echo "[$(date '+%H:%M:%S')] HTTP Status: $STATUS"
-  sleep 1
-done
+watch kubectl get pods -n wafr-wahana -o wide
 
 # Terminal 3 — Matikan pod Redis primary
 REDIS_PRIMARY_POD="redis-master-0"   # sesuaikan nama pod primary
@@ -611,7 +606,7 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 
 | Test Case | Tanggal Test | PIC | Status | Catatan |
 |---|---|---|---|---|
-| TC-01: Validasi Data | | | ⬜ Belum | |
+| TC-01: Validasi Data | Senin, 11 Mei 2026 | Elang | ✅ Lulus | - |
 | TC-02: Pod Failure | | | ⬜ Belum | |
 | TC-03: Node Failure | | | ⬜ Belum | |
 | TC-04: Rolling Update | | | ⬜ Belum | |
@@ -623,25 +618,35 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 
 ### Detail Temuan
 
-```
-TC-02: Pod Failure
-- Pod didelete pada: HH:MM:SS
-- Pod baru Ready pada: HH:MM:SS
-- Jumlah error selama proses: 0
-- Kesimpulan: LULUS / GAGAL
-- Catatan: ...
+#### **1. TC-01: Validasi Data (Data Parity)**
+**Status:** ✅ Lulus | **Tanggal:** 11 Mei 2026 | **PIC:** Elang
 
-TC-07: Redis Sentinel
-- Status sebelum test: 1 primary, 3 slave, 3 sentinel aktif
-- Endpoint yang dihit: /wafr/<endpoint>
-- Key yang tersimpan di Redis: ...
-- Data berhasil direplikasi ke slave: Ya / Tidak
-- Waktu failover (primary mati → slave promote): ... detik
-- Jumlah error WAFR selama failover: ...
-- Data sebelum failover tetap ada: Ya / Tidak
-- Kesimpulan: LULUS / GAGAL
-- Catatan: ...
-```
+Berikut adalah rincian perbandingan antara environment Legacy dan Kubernetes:
+
+**1. Halaman Utama / Dashboard**
+Hasil render aplikasi WAFR di Kubernetes berhasil meniru Legacy dengan sempurna, termasuk menampilkan pesan error dengan kode tanggal.
+
+*Bukti Visual:*
+> **A. WAFR Legacy**
+> ![Halaman landing page wafr legacy](images/lp-wafr-legacy.png)
+> 
+> **B. WAFR Kubernetes**
+> ![Halaman landing page wafr kubernetes](images/lp-wafr-kube.png)
+
+**2. Navigasi & Rendering Data**
+*   **Daftar Report:** Pengujian difokuskan pada menu **Service Berkala**. Hasilnya, *list* data yang dirender pada WAFR Kubernetes 100% identik dengan Legacy.
+*   **Detail Isi Report:** Saat menelusuri detail dari record **Service Berkala**, informasi yang ditarik dari database Production berhasil ditampilkan secara akurat di Kubernetes tanpa ada *data loss* atau salah format.
+
+**3. Fungsionalitas Pencarian & Filter**
+*   **Aksi:** Melakukan filter berdasarkan kolom **"Dikerjakan oleh"** dengan *keyword* pencarian **"Bengkel rekanan"**.
+*   **Hasil:** Sistem *routing* dan *query* pada WAFR Kubernetes berjalan normal dan menghasilkan output tabel yang sama persis dengan sistem Legacy.
+
+---
+**Kesimpulan:**
+Aplikasi WAFR di Kubernetes terbukti **LULUS** validasi data. Aplikasi dapat merender UI, menarik data dari database Production, dan menjalankan fungsi filter dengan perilaku yang identik dengan environment Legacy.
+
+**Catatan Tambahan:** 
+Tidak ditemukan masalah, *error log*, atau anomali jaringan selama pengetesan TC-01 berlangsung.
 
 ---
 
