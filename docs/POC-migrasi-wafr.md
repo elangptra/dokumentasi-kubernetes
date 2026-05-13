@@ -4,8 +4,8 @@
 |---|---|
 | **Dokumen** | Proof of Concept (POC) Migrasi WAFR |
 | **Author** | Elang |
-| **Tanggal** | 2025-05-05 |
-| **Update Terakhir** | 2025-05-11 |
+| **Tanggal** | Selasa, 05 Mei 2026 |
+| **Update Terakhir** | Rabu, 13 Mei 2026 |
 | **Status** | Draft / Testing Phase |
 
 ---
@@ -218,10 +218,7 @@ TARGET_NODE="192.168.200.102"
 # --- Opsi A: Drain node (graceful, direkomendasikan untuk test awal) ---
 kubectl drain $TARGET_NODE --ignore-daemonsets --delete-emptydir-data --force
 
-# --- Opsi B: Cordon node (node tidak menerima pod baru) ---
-kubectl cordon $TARGET_NODE
-
-# --- Opsi C: Matikan node secara hard (simulasi crash) ---
+# --- Opsi B: Matikan node secara hard (simulasi crash) ---
 # HATI-HATI: lakukan hanya jika node tersebut aman untuk dimatikan
 # ssh user@$TARGET_NODE "sudo shutdown -h now"
 
@@ -232,18 +229,33 @@ kubectl get pods -n wafr-wahana -l app=wafr -o wide -w
 kubectl uncordon $TARGET_NODE
 ```
 
+saat di drain
+10:32:00
+
+sampai
+10:33:00
+
+pod dijalankan ke node lain
+10:32:02
+
+pod status ready
+10:32:13
+
+total waktu
+13 detik hingga pod ready ke node lain
+
 **Observasi yang Dicatat:**
 
 | Parameter | Nilai |
 |---|---|
-| Worker node yang dimatikan | _(IP node)_ |
-| Pod yang terdampak | _(nama pod)_ |
-| Waktu node tidak tersedia | _(timestamp)_ |
-| Waktu pod baru dijadwalkan di node lain | _(timestamp)_ |
-| Worker node tujuan rescheduling | _(IP node baru)_ |
-| Waktu pod baru berstatus Running/Ready | _(timestamp)_ |
-| Total waktu rescheduling | _(dalam detik)_ |
-| Aplikasi tetap bisa diakses? | ✅ / ❌ |
+| Worker node yang dimatikan | k8s-worker3 |
+| Pod yang terdampak | wafr-app dan wafr-nginx |
+| Waktu node tidak tersedia | 10:32:00 s/d 10:33:00 |
+| Waktu pod baru dijadwalkan di node lain | 10:32:02 |
+| Worker node tujuan rescheduling | Worker 1 (nginx) dan Worker 2 (app) |
+| Waktu pod baru berstatus Running/Ready | 10:33:13 |
+| Total waktu rescheduling | ~11 Detik |
+| Aplikasi tetap bisa diakses? | ✅ |
 
 **Kriteria Lulus:**
 - Pod secara otomatis dijadwalkan ke worker node lain dalam waktu < 60 detik.
@@ -606,7 +618,7 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 |---|---|---|---|---|
 | TC-01: Validasi Data | Kamis, 07 Mei 2026 | Elang | ✅ Lulus | - |
 | TC-02: Pod Failure | Senin, 11 Mei 2026 | Elang | ✅ Lulus | Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. |
-| TC-03: Node Failure | Rabu, 13 Mei 2026 | Elang | ⬜ Belum | |
+| TC-03: Node Failure | Rabu, 13 Mei 2026 | Elang | ✅ Lulus | Cluster Kubernetes terbukti cukup bagus terhadap skenario kegagalan tingkat node (*Node Failure*). Sistem secara cerdas mengisolasi node yang bermasalah dan memindahkan beban kerjanya ke node yang sehat secara otomatis. |
 | TC-04: Rolling Update | Selasa, 12 Mei 2026 | Elang | ✅ Lulus | fitur *Rolling Update* di Kubernetes berjalan sempurna untuk skenario *High Availability* aplikasi WAFR. |
 | TC-05: Performance | Selasa, 12 Mei 2026 | Elang | ✅ Lulus | Angka *Avg Response Time* (~7.9 detik) dan *P95* (24 detik) pada saat stress test menunjukkan adanya latensi tinggi. |
 | TC-06: Koneksi Database | | | ⬜ Belum | |
@@ -693,6 +705,49 @@ Berikut adalah rincian hasil pengujian resiliensi pod WAFR:
 
 **Catatan Tambahan:**
 Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. Pod yang sedang dalam fase *Terminating* langsung dicabut dari *endpoint* Service sehingga tidak menerima *traffic* baru yang bisa menyebabkan *error* di sisi *user*.
+
+<br>
+
+#### **TC-03: Node Failure — Pod Rescheduling & Zero Downtime**
+**Status:** ✅ Lulus | **Tanggal:** 13 Mei 2026 | **PIC:** Elang
+
+Berikut adalah rincian hasil pengujian infrastruktur dan ketersediaan node pada Cluster Kubernetes saat terjadi kegagalan:
+
+**1. Eksekusi Simulasi Kegagalan Node**
+*   **Aksi:** Melakukan pengosongan paksa (*drain* / *cordon*) pada *worker node* `192.168.200.181` (`k8s-worker3`) yang sedang melayani beban kerja salah satu *replica* pod WAFR. 
+*   **Observasi Sistem:** Mekanisme pengamanan node berjalan sesuai standar. Status node `k8s-worker3` langsung diubah dari `Ready` menjadi `Ready, SchedulingDisabled` (diisolasi dari penugasan pod baru). Bersamaan dengan itu, seluruh pod yang berada di node tersebut mulai di-*evict* (dikeluarkan) oleh *Kubernetes Controller*. Waktu dimulainya proses eksekusi ini tercatat pada pukul 10:32:00 WIB.
+
+*Bukti Visual:*
+> **Status Node dan Pod Sebelum Drain**
+> ![Status node sebelum drain](images/drain-get-nodes-before.png)
+> ![Status pod sebelum drain](images/drain-get-pods-before.png)
+> 
+> **Proses Drain dan Perubahan Status Node**
+> ![Status node setelah di-cordon](images/drain-node-status.png)
+> ![Proses evict pod di worker3](images/drain-process-worker3.png)
+
+**2. Rescheduling & Ketersediaan Aplikasi (Zero Downtime Check)**
+*   **Aksi:** Melakukan *monitoring* terhadap proses penjadwalan ulang (*rescheduling*) pod ke *worker node* lain yang sehat, sembari menguji aksesibilitas UI aplikasi WAFR secara konkuren.
+*   **Hasil:**
+    *   **Kecepatan Rescheduling:** *Kubernetes Scheduler* sangat responsif. Pod WAFR yang terimbas (*app* dan *nginx*) langsung di-assign ke `k8s-worker1` dan `k8s-worker2` pada pukul 10:32:02 WIB. Pod baru tersebut berhasil mencapai status *Running* dan *Ready* pada pukul 10:32:13 WIB. Total waktu yang dibutuhkan untuk pemulihan pod di node baru hanya memakan durasi **~11 detik**.
+    *   **Aksesibilitas Aplikasi:** Sistem mencapai target **Zero Downtime**. Aplikasi WAFR tetap beroperasi dan dapat merespons *request* tanpa kendala selama proses *rescheduling* berlangsung, karena seluruh *traffic* secara otomatis diarahkan ke pod *replica* sehat yang berada di *worker node* lain (`k8s-worker4`).
+
+*Bukti Visual:*
+> **Proses Penjadwalan Ulang Pod ke Worker 1 dan 2**
+> ![Rescheduling pod ke worker lain](images/rescheduling-pods.png)
+> 
+> **Pod Berhasil Tersedia (Running) di Node Baru**
+> ![Pod berhasil running](images/rescheduling-pods-success.png)
+> 
+> **Aksesibilitas Aplikasi Tetap Normal**
+> ![UI aplikasi tidak terganggu](images/rescheduling-app-accessibility.png)
+
+---
+**Kesimpulan:**
+**LULUS.** Cluster Kubernetes terbukti cukup bagus terhadap skenario kegagalan tingkat node (*Node Failure*). Sistem secara cerdas mengisolasi node yang bermasalah dan memindahkan beban kerjanya ke node yang sehat secara otomatis dengan durasi pemulihan di bawah batas waktu (hanya 11 detik). Fitur multi-replika dan Service K8s sukses menjaga aplikasi WAFR terhindar dari *downtime*.
+
+**Catatan Tambahan:**
+Penyebaran *replica* pod di berbagai *worker node* yang berbeda terbukti ampuh. Keberhasilan pengujian ini memvalidasi bahwa arsitektur kluster multi-node yang diterapkan sudah memenuhi standar *High Availability* di level infrastruktur.
 
 <br>
 
