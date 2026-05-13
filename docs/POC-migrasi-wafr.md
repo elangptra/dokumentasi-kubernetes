@@ -606,8 +606,8 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 |---|---|---|---|---|
 | TC-01: Validasi Data | Kamis, 07 Mei 2026 | Elang | ✅ Lulus | - |
 | TC-02: Pod Failure | Senin, 11 Mei 2026 | Elang | ✅ Lulus | Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. |
-| TC-03: Node Failure | | | ⬜ Belum | |
-| TC-04: Rolling Update | Selasa, 12 Mei 2026 | | ✅ Lulus | fitur *Rolling Update* di Kubernetes berjalan sempurna untuk skenario *High Availability* aplikasi WAFR. |
+| TC-03: Node Failure | Rabu, 13 Mei 2026 | Elang | ⬜ Belum | |
+| TC-04: Rolling Update | Selasa, 12 Mei 2026 | Elang | ✅ Lulus | fitur *Rolling Update* di Kubernetes berjalan sempurna untuk skenario *High Availability* aplikasi WAFR. |
 | TC-05: Performance | Selasa, 12 Mei 2026 | Elang | ✅ Lulus | Angka *Avg Response Time* (~7.9 detik) dan *P95* (24 detik) pada saat stress test menunjukkan adanya latensi tinggi. |
 | TC-06: Koneksi Database | | | ⬜ Belum | |
 | TC-07: Redis Sentinel | | | ⬜ Belum | |
@@ -696,32 +696,6 @@ Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. Pod
 
 <br>
 
-#### **TC-03: Node Failure — Pod Rescheduling & Zero Downtime**
-**Status:** ⬜ Belum | **Tanggal:** [DD/MM/YYYY] | **PIC:** [Nama PIC]
-
-Berikut adalah rincian hasil pengujian ketersediaan node pada Cluster Kubernetes:
-
-**1. Simulasi Node Mati**
-*   **Aksi:** Mematikan / melakukan *drain* pada worker node `[IP Node Target, misal: 192.168.200.102]` yang sedang menjalankan pod WAFR.
-*   **Observasi Sistem:** [Jelaskan respons cluster, misal: "Status node berubah menjadi NotReady/SchedulingDisabled. Pod yang ada di node tersebut langsung di-*evict*."]
-
-*Bukti Visual:*
-> **Status Node & Pod Rescheduling**
-> ![alt text](images/path-ke-gambar-log-tc03.png)
-
-**2. Rescheduling & Ketersediaan**
-*   **Aksi:** Memantau proses pemindahan pod ke worker node lain (misal ke `192.168.200.103`) dan mengecek akses aplikasi.
-*   **Hasil:** [Jelaskan durasi waktu yang dibutuhkan pod untuk running di node baru, dan apakah ada *downtime* pada aplikasi.]
-
----
-**Kesimpulan:**
-[Lulus/Gagal. Berikan ringkasan singkat hasil pengujian simulasi node mati.]
-
-**Catatan Tambahan:**
-[-]
-
-<br>
-
 #### **TC-04: Rolling Update tanpa Downtime**
 **Status:** ✅ Lulus | **Tanggal:** 12 Mei 2026 | **PIC:** Elang
 
@@ -806,55 +780,6 @@ Meskipun aplikasi tidak tumbang, angka *Avg Response Time* (~7.9 detik) dan *P95
 [-]
 
 <br>
-
-#### **TC-06: Koneksi Database**
-**Status:** ⬜ Belum | **Tanggal:** [DD/MM/YYYY] | **PIC:** [Nama PIC]
-
-**1. Verifikasi Koneksi Internal Pod**
-*   **Aksi:** Mengecek apakah aplikasi WAFR berhasil me- *resolve* dan *connect* ke kredensial Database 120 melalui ConfigMap/Secret.
-*   **Hasil:** [Jelaskan bahwa tidak ada error koneksi DB di *log container*.]
-
-**2. Validasi Operasional Data**
-*   **Aksi:** Melakukan *query* / akses data melalui UI untuk memastikan aliran data stabil.
-*   **Hasil:** [Jelaskan respon aplikasi saat memuat data dalam jumlah besar/normal dari DB.]
-
----
-**Kesimpulan:**
-[Lulus/Gagal. Konfirmasi kelancaran I/O aplikasi ke database.]
-
-**Catatan Tambahan:**
-[-]
-
-<br>
-
-#### **TC-07: Redis Sentinel — Validasi Penyimpanan Cache & Failover**
-**Status:** ⬜ Belum | **Tanggal:** [DD/MM/YYYY] | **PIC:** [Nama PIC]
-
-Berikut adalah rincian pengujian integrasi WAFR dengan Redis Sentinel Cluster:
-
-**1. Uji Operasi Read/Write ke Redis**
-*   **Aksi:** Mengakses *endpoint* WAFR yang melakukan hit ke Redis, lalu memvalidasi *key* di sisi *Primary Redis* via `redis-cli`.
-*   **Hasil:** [Jelaskan apakah data berhasil disimpan dan direplikasi ke 3 *read-replica/slave*.]
-
-*Bukti Visual:*
-> **Verifikasi Key Redis di Terminal**
-> ![alt text](images/path-ke-gambar-redis-tc07a.png)
-
-**2. Simulasi Failover (Primary Redis Mati)**
-*   **Aksi:** Mematikan pod *Redis Primary* secara paksa.
-*   **Observasi Sentinel:** [Jelaskan bagaimana Sentinel mendeteksi primary yang mati dan mem-*promote* salah satu replica menjadi primary baru (biasanya di bawah 30 detik).]
-*   **Akses Aplikasi:** [Jelaskan apakah WAFR berhasil melakukan *auto-reconnect* ke primary baru dan tetap bisa melakukan *write* data.]
-
-*Bukti Visual:*
-> **Log Sentinel - Proses Failover**
-> ![alt text](images/path-ke-gambar-redis-tc07b.png)
-
----
-**Kesimpulan:**
-[Lulus/Gagal. Rangkuman keberhasilan Sentinel menjaga *state* dan *cache* aplikasi tanpa intervensi manual.]
-
-**Catatan Tambahan:**
-[Catat jika ada error sementara (seperti aplikasi melempar *exception Not connected* sesaat sebelum Sentinel selesai melakukan failover).]
 
 ---
 
