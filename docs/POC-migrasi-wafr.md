@@ -277,8 +277,8 @@ spec:
 # Terminal 1 — Monitor pod selama proses update
 watch kubectl get pods -n wafr-wahana -o wide
 
-# Terminal 2 — Trigger rolling update dengan image baru
-kubectl set image deployment/wafr wafr=<image>:<new-tag> -n wafr-wahana
+# Terminal 2 — Trigger rolling update
+kubectl rollout restart deployment/wafr -n wafr-wahana
 
 # Pantau status rollout
 kubectl rollout status deployment/wafr -n wafr-wahana
@@ -590,7 +590,7 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 | TC-02: Pod Failure | 0 downtime saat 1 dari 2 pod dimatikan | **Wajib** |
 | TC-03: Node Failure | Pod rescheduling < 60 detik, aplikasi tetap aksesibel | **Wajib** |
 | TC-04: Rolling Update | 0 downtime saat rolling update | Disarankan |
-| TC-05: Performance | Error rate < 20% | Disarankan |
+| TC-05: Performance | Error rate < 10% | Disarankan |
 | TC-06: Koneksi Database | Koneksi DB stabil, tidak ada data loss | **Wajib** |
 | TC-07: Redis Sentinel | Tulis/baca berhasil, replikasi ke slave OK, failover otomatis < 30 detik, data tidak hilang | **Wajib** |
 
@@ -607,7 +607,7 @@ curl -v -X POST http://wafr-prod-k8s.wahana.com/wafr/<endpoint-redis> \
 | TC-01: Validasi Data | Kamis, 07 Mei 2026 | Elang | ✅ Lulus | - |
 | TC-02: Pod Failure | Senin, 11 Mei 2026 | Elang | ✅ Lulus | Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. |
 | TC-03: Node Failure | | | ⬜ Belum | |
-| TC-04: Rolling Update | | | ⬜ Belum | |
+| TC-04: Rolling Update | Selasa, 12 Mei 2026 | | ✅ Lulus | fitur *Rolling Update* di Kubernetes berjalan sempurna untuk skenario *High Availability* aplikasi WAFR. |
 | TC-05: Performance | Selasa, 12 Mei 2026 | Elang | ✅ Lulus | Angka *Avg Response Time* (~7.9 detik) dan *P95* (24 detik) pada saat stress test menunjukkan adanya latensi tinggi. |
 | TC-06: Koneksi Database | | | ⬜ Belum | |
 | TC-07: Redis Sentinel | | | ⬜ Belum | |
@@ -696,6 +696,77 @@ Perilaku *load balancing* pada Service Kubernetes bekerja sesuai ekspektasi. Pod
 
 <br>
 
+#### **TC-03: Node Failure — Pod Rescheduling & Zero Downtime**
+**Status:** ⬜ Belum | **Tanggal:** [DD/MM/YYYY] | **PIC:** [Nama PIC]
+
+Berikut adalah rincian hasil pengujian ketersediaan node pada Cluster Kubernetes:
+
+**1. Simulasi Node Mati**
+*   **Aksi:** Mematikan / melakukan *drain* pada worker node `[IP Node Target, misal: 192.168.200.102]` yang sedang menjalankan pod WAFR.
+*   **Observasi Sistem:** [Jelaskan respons cluster, misal: "Status node berubah menjadi NotReady/SchedulingDisabled. Pod yang ada di node tersebut langsung di-*evict*."]
+
+*Bukti Visual:*
+> **Status Node & Pod Rescheduling**
+> ![alt text](images/path-ke-gambar-log-tc03.png)
+
+**2. Rescheduling & Ketersediaan**
+*   **Aksi:** Memantau proses pemindahan pod ke worker node lain (misal ke `192.168.200.103`) dan mengecek akses aplikasi.
+*   **Hasil:** [Jelaskan durasi waktu yang dibutuhkan pod untuk running di node baru, dan apakah ada *downtime* pada aplikasi.]
+
+---
+**Kesimpulan:**
+[Lulus/Gagal. Berikan ringkasan singkat hasil pengujian simulasi node mati.]
+
+**Catatan Tambahan:**
+[-]
+
+<br>
+
+#### **TC-04: Rolling Update tanpa Downtime**
+**Status:** ✅ Lulus | **Tanggal:** 12 Mei 2026 | **PIC:** Elang
+
+Berikut adalah rincian hasil pengujian pembaruan versi (update) aplikasi WAFR menggunakan strategi *Rolling Update*:
+
+**1. Eksekusi Rolling Update**
+*   **Aksi:** Mengubah manifest *deployment* aplikasi WAFR untuk melakukan *upgrade* versi *image container* dari `wafr_web_k8s:0.1.02` menjadi `wafr_web_k8s:0.1.03`.
+
+*Bukti Visual:*
+> **Manifest Sebelum Update (Tag 0.1.02)**
+> ![Manifest versi lama](images/rolling-image-before.png)
+> 
+> **Manifest Setelah Update (Tag 0.1.03)**
+> ![Manifest versi baru](images/rolling-image-after.png)
+
+*   **Observasi Rollout:** 
+    Kubernetes mengeksekusi transisi versi dengan sangat mulus. Selama pod versi baru (`0.1.03`) masih dalam fase `ContainerCreating`, pod versi lama (`0.1.02`) tidak langsung dimatikan dan tetap dipertahankan dalam status *Running* untuk melayani *traffic*. Pod versi lama baru mulai di-*terminate* secara bertahap hanya setelah pod versi terbaru berstatus *Ready* serta *Running* dan siap menerima beban kerja.
+
+*Bukti Visual:*
+> **Status Pod Saat Proses Rollout Berlangsung**
+> ![Proses rolling update](images/rolling-update-process.png)
+> 
+> **Status Pod Setelah Rollout Selesai**
+> ![Rolling update selesai](images/rolling-update-finished.png)
+> 
+> **Konfirmasi Rollout Deployment**
+> ![Status rollout](images/rolling-update-status.png)
+
+**2. Ketersediaan Selama Update (Zero Downtime Check)**
+*   **Aksi:** Melakukan pengujian aksesibilitas UI/website aplikasi WAFR tepat saat proses transisi pod sedang berlangsung.
+*   **Hasil:** Aplikasi beroperasi secara normal tanpa gangguan. Tidak ditemukan adanya *request drop*, *error* HTTP 502 Bad Gateway, maupun *request timeout* bagi *user* yang sedang mengakses sistem.
+
+*Bukti Visual:*
+> **Akses Website Saat Transisi Berlangsung**
+> ![Akses website saat rolling update](images/rolling-website-access.png)
+
+---
+**Kesimpulan:**
+**LULUS.** Pengujian membuktikan bahwa fitur *Rolling Update* di Kubernetes berjalan sempurna untuk skenario *High Availability* aplikasi WAFR. Pembaruan versi aplikasi dapat dilakukan dengan aman langsung di *environment production* dengan capaian **Zero Downtime**, sehingga meminimalisir gangguan operasional pada *end-user*.
+
+**Catatan Tambahan:**
+Perilaku *load balancer* dan Service Kubernetes terbukti efektif dalam membagi dan menahan *traffic* dari pod yang sedang dimatikan ke pod baru yang sudah lolos *readiness probe*.
+
+<br>
+
 #### **TC-05: Load & Performance Baseline**
 **Status:** ✅ Lulus | **Tanggal:** 12 Mei 2026 | **PIC:** Elang
 
@@ -735,6 +806,55 @@ Meskipun aplikasi tidak tumbang, angka *Avg Response Time* (~7.9 detik) dan *P95
 [-]
 
 <br>
+
+#### **TC-06: Koneksi Database**
+**Status:** ⬜ Belum | **Tanggal:** [DD/MM/YYYY] | **PIC:** [Nama PIC]
+
+**1. Verifikasi Koneksi Internal Pod**
+*   **Aksi:** Mengecek apakah aplikasi WAFR berhasil me- *resolve* dan *connect* ke kredensial Database 120 melalui ConfigMap/Secret.
+*   **Hasil:** [Jelaskan bahwa tidak ada error koneksi DB di *log container*.]
+
+**2. Validasi Operasional Data**
+*   **Aksi:** Melakukan *query* / akses data melalui UI untuk memastikan aliran data stabil.
+*   **Hasil:** [Jelaskan respon aplikasi saat memuat data dalam jumlah besar/normal dari DB.]
+
+---
+**Kesimpulan:**
+[Lulus/Gagal. Konfirmasi kelancaran I/O aplikasi ke database.]
+
+**Catatan Tambahan:**
+[-]
+
+<br>
+
+#### **TC-07: Redis Sentinel — Validasi Penyimpanan Cache & Failover**
+**Status:** ⬜ Belum | **Tanggal:** [DD/MM/YYYY] | **PIC:** [Nama PIC]
+
+Berikut adalah rincian pengujian integrasi WAFR dengan Redis Sentinel Cluster:
+
+**1. Uji Operasi Read/Write ke Redis**
+*   **Aksi:** Mengakses *endpoint* WAFR yang melakukan hit ke Redis, lalu memvalidasi *key* di sisi *Primary Redis* via `redis-cli`.
+*   **Hasil:** [Jelaskan apakah data berhasil disimpan dan direplikasi ke 3 *read-replica/slave*.]
+
+*Bukti Visual:*
+> **Verifikasi Key Redis di Terminal**
+> ![alt text](images/path-ke-gambar-redis-tc07a.png)
+
+**2. Simulasi Failover (Primary Redis Mati)**
+*   **Aksi:** Mematikan pod *Redis Primary* secara paksa.
+*   **Observasi Sentinel:** [Jelaskan bagaimana Sentinel mendeteksi primary yang mati dan mem-*promote* salah satu replica menjadi primary baru (biasanya di bawah 30 detik).]
+*   **Akses Aplikasi:** [Jelaskan apakah WAFR berhasil melakukan *auto-reconnect* ke primary baru dan tetap bisa melakukan *write* data.]
+
+*Bukti Visual:*
+> **Log Sentinel - Proses Failover**
+> ![alt text](images/path-ke-gambar-redis-tc07b.png)
+
+---
+**Kesimpulan:**
+[Lulus/Gagal. Rangkuman keberhasilan Sentinel menjaga *state* dan *cache* aplikasi tanpa intervensi manual.]
+
+**Catatan Tambahan:**
+[Catat jika ada error sementara (seperti aplikasi melempar *exception Not connected* sesaat sebelum Sentinel selesai melakukan failover).]
 
 ---
 
